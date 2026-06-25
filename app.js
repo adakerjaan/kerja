@@ -18,6 +18,19 @@ const statusBadge = (s) => {
   const cls = ['approved','paid','active'].includes(s) ? 'ok' : ['submitted','unpaid','in_progress'].includes(s) ? 'warn' : ['rejected','inactive','closed'].includes(s) ? 'danger' : 'info';
   return `<span class="badge ${cls}">${s || '-'}</span>`;
 };
+const todayKey = () => new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Jakarta' });
+const tomorrowKey = () => { const d = new Date(); d.setDate(d.getDate()+1); return d.toLocaleDateString('en-CA', { timeZone:'Asia/Jakarta' }); };
+const quotaPerDay = (t) => Number(t?.quota_per_day ?? t?.quota ?? 1);
+
+async function getTodaySubmissionCounts(taskIds=[]) {
+  if (!taskIds.length) return {};
+  const { data, error } = await sb.from('submissions')
+    .select('task_id')
+    .in('task_id', taskIds)
+    .eq('work_date', todayKey());
+  if (error) { toast(error.message); return {}; }
+  return (data || []).reduce((acc, row) => { acc[row.task_id] = (acc[row.task_id] || 0) + 1; return acc; }, {});
+}
 
 function toast(msg) {
   const box = document.createElement('div');
@@ -142,13 +155,14 @@ function stat(label, value) { return `<div class="stat"><span>${label}</span><b>
 
 async function adminTasks() {
   const { data } = await sb.from('tasks').select('*').order('created_at', { ascending:false });
+  const todayCounts = await getTodaySubmissionCounts((data || []).map(t => t.id));
   setContent(`<div class="card">
     <h3>Tambah Task</h3>
     <div class="form-grid">
       <div><label>Judul Task</label><input id="taskTitle"></div>
       <div><label>Link Target</label><input id="taskLink"></div>
       <div><label>Bayaran</label><input id="taskReward" type="number" value="2000"></div>
-      <div><label>Kuota</label><input id="taskQuota" type="number" value="1"></div>
+      <div><label>Kuota Per Hari</label><input id="taskQuotaPerDay" type="number" value="1"></div>
       <div><label>Deadline</label><input id="taskDeadline" type="date"></div>
       <div><label>Status</label><select id="taskStatus"><option value="active">active</option><option value="inactive">inactive</option><option value="closed">closed</option></select></div>
       <div class="full"><label>Deskripsi</label><textarea id="taskDesc"></textarea></div>
@@ -156,15 +170,20 @@ async function adminTasks() {
     </div>
     <div class="actions"><button id="btnCreateTask">Simpan Task</button></div>
   </div>
-  <div class="card"><h3>Daftar Task</h3>${tasksTable(data||[])}</div>`);
+  <div class="card"><h3>Daftar Task</h3>${tasksTable(data||[], todayCounts)}</div>`);
   $('btnCreateTask').onclick = createTask;
   document.querySelectorAll('[data-task-status]').forEach(btn => btn.onclick = () => updateTaskStatus(btn.dataset.taskStatus, btn.dataset.status));
 }
 
-function tasksTable(rows) {
+function tasksTable(rows, todayCounts={}) {
   if (!rows.length) return '<p class="muted">Belum ada task.</p>';
-  return `<table><thead><tr><th>Judul</th><th>Bayaran</th><th>Kuota</th><th>Deadline</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
-    ${rows.map(r=>`<tr><td><b>${r.title}</b><br><span class="muted">${r.target_link||''}</span></td><td>${money(r.reward_amount)}</td><td>${r.quota}</td><td>${r.deadline||'-'}</td><td>${statusBadge(r.status)}</td><td class="actions"><button class="ghost" data-task-status="${r.id}" data-status="active">Aktif</button><button class="secondary" data-task-status="${r.id}" data-status="inactive">Nonaktif</button><button class="danger" data-task-status="${r.id}" data-status="closed">Tutup</button></td></tr>`).join('')}
+  return `<table><thead><tr><th>Judul</th><th>Bayaran</th><th>Kuota Hari Ini</th><th>Deadline</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
+    ${rows.map(r=>{
+      const used = todayCounts[r.id] || 0;
+      const limit = quotaPerDay(r);
+      const dailyStatus = used >= limit ? '<span class="badge danger">penuh hari ini</span>' : statusBadge(r.status);
+      return `<tr><td><b>${r.title}</b><br><span class="muted">${r.target_link||''}</span></td><td>${money(r.reward_amount)}</td><td>${used} / ${limit}</td><td>${r.deadline||'-'}</td><td>${dailyStatus}</td><td class="actions"><button class="ghost" data-task-status="${r.id}" data-status="active">Aktif</button><button class="secondary" data-task-status="${r.id}" data-status="inactive">Nonaktif</button><button class="danger" data-task-status="${r.id}" data-status="closed">Tutup</button></td></tr>`;
+    }).join('')}
   </tbody></table>`;
 }
 
@@ -173,7 +192,7 @@ async function createTask() {
     title: $('taskTitle').value.trim(),
     target_link: $('taskLink').value.trim(),
     reward_amount: Number($('taskReward').value || 0),
-    quota: Number($('taskQuota').value || 1),
+    quota_per_day: Number($('taskQuotaPerDay').value || 1),
     deadline: $('taskDeadline').value || null,
     status: $('taskStatus').value,
     description: $('taskDesc').value.trim(),
@@ -322,15 +341,17 @@ async function adminReports() {
 
 async function workerDashboard() {
   const [claims, subs, pays, tasks] = await Promise.all([
-    sb.from('task_claims').select('status').eq('worker_id', me.id),
+    sb.from('task_claims').select('status').eq('worker_id', me.id).eq('work_date', todayKey()),
     sb.from('submissions').select('status').eq('worker_id', me.id),
     sb.from('payments').select('amount,status').eq('worker_id', me.id),
-    sb.from('tasks').select('id').eq('status','active')
+    sb.from('tasks').select('*').eq('status','active')
   ]);
+  const todayCounts = await getTodaySubmissionCounts((tasks.data || []).map(t => t.id));
+  const availableCount = (tasks.data || []).filter(t => (todayCounts[t.id] || 0) < quotaPerDay(t)).length;
   const unpaid = (pays.data||[]).filter(p=>p.status==='unpaid').reduce((a,b)=>a+Number(b.amount||0),0);
   const paid = (pays.data||[]).filter(p=>p.status==='paid').reduce((a,b)=>a+Number(b.amount||0),0);
   setContent(`<div class="grid">
-    ${stat('Task Tersedia',(tasks.data||[]).length)}
+    ${stat('Task Tersedia',availableCount)}
     ${stat('Sedang Dikerjakan',(claims.data||[]).filter(c=>c.status==='in_progress').length)}
     ${stat('Menunggu Review',(subs.data||[]).filter(s=>s.status==='submitted').length)}
     ${stat('Approved',(subs.data||[]).filter(s=>s.status==='approved').length)}
@@ -341,41 +362,49 @@ async function workerDashboard() {
 
 async function workerAvailableTasks() {
   const { data } = await sb.from('tasks').select('*').eq('status','active').order('created_at',{ascending:false});
-  setContent(`<div class="card"><h3>Task Tersedia</h3>${availableTable(data||[])}</div>`);
+  const todayCounts = await getTodaySubmissionCounts((data || []).map(t => t.id));
+  const { data: myClaims } = await sb.from('task_claims').select('task_id').eq('worker_id', me.id).eq('work_date', todayKey());
+  const claimedSet = new Set((myClaims || []).map(c => c.task_id));
+  const available = (data || []).filter(t => (todayCounts[t.id] || 0) < quotaPerDay(t) && !claimedSet.has(t.id));
+  setContent(`<div class="card"><h3>Task Tersedia</h3>${availableTable(available, todayCounts)}</div>`);
   document.querySelectorAll('[data-claim]').forEach(b => b.onclick = () => claimTask(b.dataset.claim));
   document.querySelectorAll('[data-task-detail]').forEach(b => b.onclick = () => taskDetail(b.dataset.taskDetail));
 }
 
-function availableTable(rows) {
-  if (!rows.length) return '<p class="muted">Belum ada task tersedia.</p>';
-  return `<table><thead><tr><th>Task</th><th>Bayaran</th><th>Kuota</th><th>Deadline</th><th>Aksi</th></tr></thead><tbody>
-  ${rows.map(t=>`<tr><td><b>${t.title}</b><br>${(t.description||'').slice(0,120)}</td><td>${money(t.reward_amount)}</td><td>${t.quota}</td><td>${t.deadline||'-'}</td><td class="actions"><button class="ghost" data-task-detail="${t.id}">Instruksi</button><button data-claim="${t.id}">Ambil Task</button></td></tr>`).join('')}
+function availableTable(rows, todayCounts={}) {
+  if (!rows.length) return '<p class="muted">Belum ada task tersedia. Bisa jadi kuota task hari ini sudah penuh.</p>';
+  return `<table><thead><tr><th>Task</th><th>Bayaran</th><th>Kuota Hari Ini</th><th>Deadline</th><th>Aksi</th></tr></thead><tbody>
+  ${rows.map(t=>`<tr><td><b>${t.title}</b><br>${(t.description||'').slice(0,120)}</td><td>${money(t.reward_amount)}</td><td>${todayCounts[t.id] || 0} / ${quotaPerDay(t)}</td><td>${t.deadline||'-'}</td><td class="actions"><button class="ghost" data-task-detail="${t.id}">Instruksi</button><button data-claim="${t.id}">Ambil Task</button></td></tr>`).join('')}
   </tbody></table>`;
 }
 
 async function taskDetail(id) {
   const { data, error } = await sb.from('tasks').select('*').eq('id', id).single();
   if (error) return toast(error.message);
-  modal('Instruksi Task', `<p><b>${data.title}</b></p><p>${data.description||''}</p><p><b>Instruksi:</b><br>${data.instruction||'-'}</p><p><b>Link:</b> ${data.target_link ? `<a href="${data.target_link}" target="_blank">Buka target</a>` : '-'}</p><p><b>Bayaran:</b> ${money(data.reward_amount)}</p>`);
+  modal('Instruksi Task', `<p><b>${data.title}</b></p><p>${data.description||''}</p><p><b>Instruksi:</b><br>${data.instruction||'-'}</p><p><b>Link:</b> ${data.target_link ? `<a href="${data.target_link}" target="_blank">Buka target</a>` : '-'}</p><p><b>Bayaran:</b> ${money(data.reward_amount)}</p><p><b>Kuota per hari:</b> ${quotaPerDay(data)} submit</p>`);
 }
 
 async function claimTask(task_id) {
-  const { error } = await sb.from('task_claims').insert({ task_id, worker_id:me.id, status:'in_progress' });
-  if (error) return toast(error.code === '23505' ? 'Task ini sudah Anda ambil.' : error.message);
+  const { data: task, error: taskErr } = await sb.from('tasks').select('*').eq('id', task_id).single();
+  if (taskErr) return toast(taskErr.message);
+  const counts = await getTodaySubmissionCounts([task_id]);
+  if ((counts[task_id] || 0) >= quotaPerDay(task)) return toast('Kuota task hari ini sudah penuh. Besok akan aktif lagi.');
+  const { error } = await sb.from('task_claims').insert({ task_id, worker_id:me.id, status:'in_progress', work_date: todayKey() });
+  if (error) return toast(error.code === '23505' ? 'Task ini sudah Anda ambil hari ini.' : error.message);
   toast('Task berhasil diambil.');
   workerMyTasks();
 }
 
 async function workerMyTasks() {
-  const { data } = await sb.from('task_claims').select('*, tasks(*)').eq('worker_id', me.id).order('claimed_at',{ascending:false});
-  setContent(`<div class="card"><h3>Task Saya</h3>${myTasksTable(data||[])}</div>`);
+  const { data } = await sb.from('task_claims').select('*, tasks(*)').eq('worker_id', me.id).eq('work_date', todayKey()).order('claimed_at',{ascending:false});
+  setContent(`<div class="card"><h3>Task Saya Hari Ini</h3>${myTasksTable(data||[])}</div>`);
   document.querySelectorAll('[data-submit-task]').forEach(b => b.onclick = () => submitForm(b.dataset.submitTask, b.dataset.taskId));
 }
 
 function myTasksTable(rows) {
   if (!rows.length) return '<p class="muted">Belum ada task yang diambil.</p>';
   return `<table><thead><tr><th>Task</th><th>Bayaran</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
-  ${rows.map(c=>`<tr><td><b>${c.tasks?.title||'-'}</b><br>${(c.tasks?.instruction||'').slice(0,100)}</td><td>${money(c.tasks?.reward_amount)}</td><td>${statusBadge(c.status)}</td><td><button data-submit-task="${c.id}" data-task-id="${c.task_id}">Submit Hasil</button></td></tr>`).join('')}
+  ${rows.map(c=>`<tr><td><b>${c.tasks?.title||'-'}</b><br>${(c.tasks?.instruction||'').slice(0,100)}</td><td>${money(c.tasks?.reward_amount)}</td><td>${statusBadge(c.status)}</td><td>${c.status==='submitted' ? '<span class="muted">Sudah submit</span>' : `<button data-submit-task="${c.id}" data-task-id="${c.task_id}">Submit Hasil</button>`}</td></tr>`).join('')}
   </tbody></table>`;
 }
 
@@ -393,12 +422,16 @@ async function submitWork(claim_id, task_id) {
   const result_note = $('subNote').value.trim();
   const proof_link = $('subProof').value.trim();
   if (!file || !result_note) return toast('Screenshot dan keterangan wajib diisi.');
+  const { data: task, error: taskErr } = await sb.from('tasks').select('*').eq('id', task_id).single();
+  if (taskErr) return toast(taskErr.message);
+  const counts = await getTodaySubmissionCounts([task_id]);
+  if ((counts[task_id] || 0) >= quotaPerDay(task)) return toast('Kuota task hari ini sudah penuh. Silakan pilih task lain atau coba besok.');
   const ext = file.name.split('.').pop();
   const path = `${me.id}/${task_id}/${Date.now()}.${ext}`;
   const up = await sb.storage.from('submission-screenshots').upload(path, file, { upsert:false });
   if (up.error) return toast(up.error.message);
   const { data: pub } = sb.storage.from('submission-screenshots').getPublicUrl(path);
-  const { error } = await sb.from('submissions').insert({ task_id, claim_id, worker_id:me.id, screenshot_url:pub.publicUrl, result_note, proof_link, status:'submitted' });
+  const { error } = await sb.from('submissions').insert({ task_id, claim_id, worker_id:me.id, screenshot_url:pub.publicUrl, result_note, proof_link, status:'submitted', work_date: todayKey() });
   if (error) return toast(error.message);
   await sb.from('task_claims').update({ status:'submitted' }).eq('id', claim_id);
   closeModal();

@@ -83,3 +83,24 @@ Worker:
 Update field worker:
 - Data worker sekarang memiliki field tambahan `E-money` untuk menyimpan nomor/metode pembayaran seperti DANA, OVO, GoPay, ShopeePay, atau rekening e-wallet lain.
 - Jika database sudah dibuat sebelumnya, jalankan SQL: `alter table public.profiles add column if not exists e_money text;`
+
+
+## Update Kuota Per Hari
+
+Field `Kuota` di task sudah diubah menjadi `Kuota Per Hari`.
+Contoh: jika kuota per hari = 3, maka task hanya menerima maksimal 3 submission pada hari tersebut. Setelah kuota penuh, worker tidak akan melihat task tersebut. Besoknya task otomatis tersedia lagi selama status manual task masih `active`.
+
+Jika database Supabase sudah dibuat sebelum update ini, jalankan file:
+
+```text
+sql/migration_daily_quota.sql
+```
+
+File utama yang perlu di-update ke GitHub:
+
+```text
+app.js
+sql/schema.sql
+sql/migration_daily_quota.sql
+README.md
+```

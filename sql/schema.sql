@@ -24,7 +24,7 @@ create table if not exists public.tasks (
   instruction text,
   target_link text,
   reward_amount numeric not null default 0,
-  quota integer not null default 1,
+  quota_per_day integer not null default 1,
   deadline date,
   status text not null default 'active' check (status in ('active','inactive','closed')),
   created_by uuid references public.profiles(id),
@@ -38,7 +38,8 @@ create table if not exists public.task_claims (
   worker_id uuid not null references public.profiles(id) on delete cascade,
   status text not null default 'in_progress' check (status in ('in_progress','submitted','cancelled')),
   claimed_at timestamptz default now(),
-  unique(task_id, worker_id)
+  work_date date not null default ((now() at time zone 'Asia/Jakarta')::date),
+  unique(task_id, worker_id, work_date)
 );
 
 create table if not exists public.submissions (
@@ -52,6 +53,7 @@ create table if not exists public.submissions (
   status text not null default 'submitted' check (status in ('submitted','revision','rejected','approved')),
   admin_note text,
   submitted_at timestamptz default now(),
+  work_date date not null default ((now() at time zone 'Asia/Jakarta')::date),
   reviewed_at timestamptz,
   reviewed_by uuid references public.profiles(id),
   unique(claim_id)
@@ -106,6 +108,39 @@ as $$
       and status = 'active'
   );
 $$;
+
+-- Cek kuota submit harian. Jika kuota sudah penuh, submission baru otomatis ditolak.
+create or replace function public.enforce_daily_task_quota()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  daily_limit integer;
+  used_count integer;
+begin
+  select quota_per_day into daily_limit
+  from public.tasks
+  where id = new.task_id;
+
+  select count(*) into used_count
+  from public.submissions
+  where task_id = new.task_id
+    and work_date = coalesce(new.work_date, (now() at time zone 'Asia/Jakarta')::date);
+
+  if used_count >= coalesce(daily_limit, 1) then
+    raise exception 'Kuota task hari ini sudah penuh. Besok akan aktif lagi.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_enforce_daily_task_quota on public.submissions;
+create trigger trg_enforce_daily_task_quota
+before insert on public.submissions
+for each row execute function public.enforce_daily_task_quota();
 
 alter table public.profiles enable row level security;
 alter table public.tasks enable row level security;
@@ -180,6 +215,21 @@ for insert with check (
   bucket_id = 'submission-screenshots'
   and auth.role() = 'authenticated'
 );
+
+-- MIGRASI JIKA DATABASE SUDAH TERLANJUR DIBUAT SEBELUM FITUR KUOTA PER HARI
+-- Jalankan blok ini sekali saja di SQL Editor jika tabel lama Anda masih memakai kolom quota:
+-- alter table public.tasks add column if not exists quota_per_day integer;
+-- update public.tasks set quota_per_day = coalesce(quota_per_day, quota, 1);
+-- alter table public.tasks alter column quota_per_day set default 1;
+-- alter table public.tasks alter column quota_per_day set not null;
+-- alter table public.task_claims add column if not exists work_date date default ((now() at time zone 'Asia/Jakarta')::date);
+-- update public.task_claims set work_date = (claimed_at at time zone 'Asia/Jakarta')::date where work_date is null;
+-- alter table public.task_claims alter column work_date set not null;
+-- alter table public.task_claims drop constraint if exists task_claims_task_id_worker_id_key;
+-- alter table public.task_claims add constraint task_claims_task_id_worker_id_work_date_key unique (task_id, worker_id, work_date);
+-- alter table public.submissions add column if not exists work_date date default ((now() at time zone 'Asia/Jakarta')::date);
+-- update public.submissions set work_date = (submitted_at at time zone 'Asia/Jakarta')::date where work_date is null;
+-- alter table public.submissions alter column work_date set not null;
 
 -- CONTOH MEMBUAT PROFILE ADMIN
 -- 1. Buat user admin manual di Supabase Authentication.
