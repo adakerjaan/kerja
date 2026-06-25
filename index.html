@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Aplikasi Task Worker</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div id="toast"></div>
+
+  <section id="loginPage" class="login-page">
+    <div class="login-card">
+      <h1>Aplikasi Task Worker</h1>
+      <p>Login admin / worker</p>
+      <label>Email</label>
+      <input id="loginEmail" type="email" placeholder="email login" />
+      <label>Password</label>
+      <input id="loginPassword" type="password" placeholder="password" />
+      <button id="btnLogin">Login</button>
+      <small>Worker hanya bisa login jika akunnya dibuat oleh admin.</small>
+    </div>
+  </section>
+
+  <section id="appPage" class="app hidden">
+    <aside class="sidebar">
+      <div class="brand">Task Worker</div>
+      <div id="userBox" class="user-box"></div>
+      <nav id="menu"></nav>
+      <button class="logout" id="btnLogout">Logout</button>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <h2 id="pageTitle">Dashboard</h2>
+      </header>
+      <div id="content"></div>
+    </main>
+  </section>
+
+  <template id="modalTemplate">
+    <div class="modal-backdrop">
+      <div class="modal">
+        <div class="modal-head">
+          <h3 id="modalTitle"></h3>
+          <button id="modalClose">×</button>
+        </div>
+        <div id="modalBody"></div>
+      </div>
+    </div>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>

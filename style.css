@@ -1,0 +1,35 @@
+:root{
+  --bg:#f5f7fb;
+  --card:#ffffff;
+  --text:#172033;
+  --muted:#667085;
+  --line:#e5e7eb;
+  --primary:#2563eb;
+  --danger:#dc2626;
+  --ok:#16a34a;
+  --warn:#d97706;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text)}
+.hidden{display:none!important}
+.login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.login-card{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px;box-shadow:0 10px 30px rgba(15,23,42,.08)}
+h1,h2,h3{margin:0 0 10px}.login-card p{color:var(--muted);margin:0 0 20px}
+label{font-size:13px;font-weight:700;margin:12px 0 6px;display:block}
+input,textarea,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:14px}
+textarea{min-height:90px;resize:vertical}
+button{border:0;border-radius:10px;padding:10px 14px;background:var(--primary);color:#fff;font-weight:700;cursor:pointer}
+button.secondary{background:#475569}button.danger{background:var(--danger)}button.ok{background:var(--ok)}button.warn{background:var(--warn)}
+button.ghost{background:#eef2ff;color:var(--primary)}button:disabled{opacity:.6;cursor:not-allowed}.login-card button{width:100%;margin-top:18px}
+small{display:block;color:var(--muted);margin-top:14px;line-height:1.45}.app{display:flex;min-height:100vh}
+.sidebar{width:260px;background:#0f172a;color:#fff;padding:18px;display:flex;flex-direction:column;gap:14px;position:fixed;left:0;top:0;bottom:0}
+.brand{font-size:20px;font-weight:800}.user-box{font-size:13px;color:#cbd5e1;border-bottom:1px solid rgba(255,255,255,.12);padding-bottom:12px;line-height:1.5}
+nav{display:flex;flex-direction:column;gap:8px}nav button,.logout{background:transparent;color:#e2e8f0;text-align:left;border:1px solid rgba(255,255,255,.08)}
+nav button.active,nav button:hover{background:#1e293b}.logout{margin-top:auto;background:#991b1b;text-align:center}
+.main{margin-left:260px;width:calc(100% - 260px);padding:22px}.topbar{margin-bottom:18px}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:16px;box-shadow:0 4px 16px rgba(15,23,42,.04)}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}.stat b{display:block;font-size:22px;margin-top:6px}.stat span{color:var(--muted);font-size:13px}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.form-grid .full{grid-column:1/-1}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;font-size:13px;vertical-align:top}th{background:#f8fafc;color:#475569}tr:last-child td{border-bottom:0}.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#e2e8f0;font-size:12px;font-weight:700}.badge.ok{background:#dcfce7;color:#166534}.badge.warn{background:#fef3c7;color:#92400e}.badge.danger{background:#fee2e2;color:#991b1b}.badge.info{background:#dbeafe;color:#1e40af}
+#toast{position:fixed;right:18px;top:18px;z-index:20}.toast{background:#111827;color:#fff;padding:12px 14px;border-radius:12px;margin-bottom:8px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:30;display:flex;align-items:center;justify-content:center;padding:20px}.modal{width:100%;max-width:760px;max-height:90vh;overflow:auto;background:#fff;border-radius:16px}.modal-head{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--line)}.modal-head button{background:#e5e7eb;color:#111827;font-size:20px;padding:4px 10px}.modal #modalBody{padding:16px}.proof-img{max-width:100%;border:1px solid var(--line);border-radius:12px}.muted{color:var(--muted)}.money{font-weight:800}.filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}.filters input,.filters select{max-width:220px}
+@media(max-width:900px){.sidebar{position:static;width:100%;height:auto}.app{display:block}.main{margin-left:0;width:100%;padding:14px}.grid,.form-grid{grid-template-columns:1fr}table{display:block;overflow:auto}}
