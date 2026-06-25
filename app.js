@@ -2,8 +2,8 @@
 // KONFIGURASI SUPABASE
 // Ganti dua nilai ini sesuai project Supabase Anda.
 // =========================
-const SUPABASE_URL = 'ISI_SUPABASE_URL_ANDA';
-const SUPABASE_ANON_KEY = 'ISI_SUPABASE_ANON_KEY_ANDA';
+const SUPABASE_URL = 'https://lxtwlnqvblavllesgitt.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx4dHdsbnF2YmxhdmxsZXNnaXR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNTg2NzAsImV4cCI6MjA5NzkzNDY3MH0.QY5jCi7QChIvhPBxzg_7h0Ek8yW8c5tLY0D9pHD_IOc';
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let session = null;
