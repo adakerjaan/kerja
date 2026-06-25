@@ -269,9 +269,26 @@ async function resetWorker(auth_user_id) {
   toast('Password worker berhasil direset.');
 }
 
+async function enrichSubmissions(rows) {
+  const taskIds = [...new Set((rows||[]).map(r=>r.task_id).filter(Boolean))];
+  const workerIds = [...new Set((rows||[]).map(r=>r.worker_id).filter(Boolean))];
+  const [{ data: tasks }, { data: workers }] = await Promise.all([
+    taskIds.length ? sb.from('tasks').select('id,title,reward_amount,target_link').in('id', taskIds) : { data: [] },
+    workerIds.length ? sb.from('profiles').select('id,nama,email').in('id', workerIds) : { data: [] }
+  ]);
+  const taskMap = Object.fromEntries((tasks||[]).map(t=>[t.id,t]));
+  const workerMap = Object.fromEntries((workers||[]).map(w=>[w.id,w]));
+  return (rows||[]).map(r=>({ ...r, tasks: taskMap[r.task_id] || null, profiles: workerMap[r.worker_id] || null }));
+}
+
 async function adminSubmissions() {
-  const { data } = await sb.from('submissions').select('*, tasks(title,reward_amount), profiles(nama,email)').order('submitted_at',{ascending:false});
-  setContent(`<div class="card"><h3>Submit Masuk</h3>${submissionsTable(data||[])}</div>`);
+  const { data, error } = await sb.from('submissions').select('*').order('submitted_at',{ascending:false});
+  if (error) {
+    setContent(`<div class="card"><h3>Submit Masuk</h3><p class="notice danger">Gagal mengambil data submit: ${error.message}</p></div>`);
+    return;
+  }
+  const rows = await enrichSubmissions(data||[]);
+  setContent(`<div class="card"><h3>Submit Masuk</h3>${submissionsTable(rows)}</div>`);
   document.querySelectorAll('[data-view-sub]').forEach(b => b.onclick = () => viewSubmission(b.dataset.viewSub));
   document.querySelectorAll('[data-approve]').forEach(b => b.onclick = () => reviewSubmission(b.dataset.approve, 'approved'));
   document.querySelectorAll('[data-reject]').forEach(b => b.onclick = () => reviewSubmission(b.dataset.reject, 'rejected'));
@@ -286,9 +303,11 @@ function submissionsTable(rows) {
 }
 
 async function viewSubmission(id) {
-  const { data, error } = await sb.from('submissions').select('*, tasks(title,reward_amount,target_link), profiles(nama,email)').eq('id', id).single();
+  const { data, error } = await sb.from('submissions').select('*').eq('id', id).single();
   if (error) return toast(error.message);
-  modal('Detail Submission', `<p><b>Worker:</b> ${data.profiles?.nama||'-'}<br><b>Task:</b> ${data.tasks?.title||'-'}<br><b>Status:</b> ${data.status}</p><p><b>Keterangan:</b><br>${data.result_note||'-'}</p><p><b>Link Bukti:</b> ${data.proof_link ? `<a href="${data.proof_link}" target="_blank">Buka link</a>` : '-'}</p>${data.screenshot_url ? `<img class="proof-img" src="${data.screenshot_url}">` : '<p>Tidak ada screenshot.</p>'}`);
+  const rows = await enrichSubmissions([data]);
+  const item = rows[0];
+  modal('Detail Submission', `<p><b>Worker:</b> ${item.profiles?.nama||'-'}<br><b>Task:</b> ${item.tasks?.title||'-'}<br><b>Status:</b> ${item.status}</p><p><b>Keterangan:</b><br>${item.result_note||'-'}</p><p><b>Link Bukti:</b> ${item.proof_link ? `<a href="${item.proof_link}" target="_blank">Buka link</a>` : '-'}</p>${item.screenshot_url ? `<img class="proof-img" src="${item.screenshot_url}">` : '<p>Tidak ada screenshot.</p>'}`);
 }
 
 async function reviewSubmission(id, status) {
