@@ -5,7 +5,6 @@
 const SUPABASE_URL = 'https://lxtwlnqvblavllesgitt.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx4dHdsbnF2YmxhdmxsZXNnaXR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNTg2NzAsImV4cCI6MjA5NzkzNDY3MH0.QY5jCi7QChIvhPBxzg_7h0Ek8yW8c5tLY0D9pHD_IOc';
 
-
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let session = null;
 let me = null;
@@ -270,15 +269,18 @@ async function resetWorker(auth_user_id) {
 }
 
 async function enrichSubmissions(rows) {
+  const submissionIds = [...new Set((rows||[]).map(r=>r.id).filter(Boolean))];
   const taskIds = [...new Set((rows||[]).map(r=>r.task_id).filter(Boolean))];
   const workerIds = [...new Set((rows||[]).map(r=>r.worker_id).filter(Boolean))];
-  const [{ data: tasks }, { data: workers }] = await Promise.all([
+  const [{ data: tasks }, { data: workers }, { data: payments }] = await Promise.all([
     taskIds.length ? sb.from('tasks').select('id,title,reward_amount,target_link').in('id', taskIds) : { data: [] },
-    workerIds.length ? sb.from('profiles').select('id,nama,email').in('id', workerIds) : { data: [] }
+    workerIds.length ? sb.from('profiles').select('id,nama,email').in('id', workerIds) : { data: [] },
+    submissionIds.length ? sb.from('payments').select('id,submission_id,status,paid_at,amount').in('submission_id', submissionIds) : { data: [] }
   ]);
   const taskMap = Object.fromEntries((tasks||[]).map(t=>[t.id,t]));
   const workerMap = Object.fromEntries((workers||[]).map(w=>[w.id,w]));
-  return (rows||[]).map(r=>({ ...r, tasks: taskMap[r.task_id] || null, profiles: workerMap[r.worker_id] || null }));
+  const paymentMap = Object.fromEntries((payments||[]).map(p=>[p.submission_id,p]));
+  return (rows||[]).map(r=>({ ...r, tasks: taskMap[r.task_id] || null, profiles: workerMap[r.worker_id] || null, payment: paymentMap[r.id] || null }));
 }
 
 async function adminSubmissions() {
@@ -293,12 +295,19 @@ async function adminSubmissions() {
   document.querySelectorAll('[data-approve]').forEach(b => b.onclick = () => reviewSubmission(b.dataset.approve, 'approved'));
   document.querySelectorAll('[data-reject]').forEach(b => b.onclick = () => reviewSubmission(b.dataset.reject, 'rejected'));
   document.querySelectorAll('[data-revision]').forEach(b => b.onclick = () => reviewSubmission(b.dataset.revision, 'revision'));
+  document.querySelectorAll('[data-pay-sub]').forEach(b => b.onclick = () => markPaidFromSubmissions(b.dataset.paySub));
 }
 
 function submissionsTable(rows) {
   if (!rows.length) return '<p class="muted">Belum ada submit.</p>';
-  return `<table><thead><tr><th>Tanggal</th><th>Worker</th><th>Task</th><th>Keterangan</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
-  ${rows.map(s=>`<tr><td>${date(s.submitted_at)}</td><td><b>${s.profiles?.nama||'-'}</b><br>${s.profiles?.email||''}</td><td>${s.tasks?.title||'-'}<br><span class="money">${money(s.tasks?.reward_amount)}</span></td><td>${(s.result_note||'-').slice(0,120)}</td><td>${statusBadge(s.status)}</td><td class="actions"><button class="ghost" data-view-sub="${s.id}">Detail</button><button class="ok" data-approve="${s.id}">Approve</button><button class="warn" data-revision="${s.id}">Revisi</button><button class="danger" data-reject="${s.id}">Reject</button></td></tr>`).join('')}
+  return `<table><thead><tr><th>Tanggal</th><th>Worker</th><th>Task</th><th>Keterangan</th><th>Status</th><th>Pembayaran</th><th>Aksi</th></tr></thead><tbody>
+  ${rows.map(s=>{
+    const payStatus = s.payment?.status || (s.status === 'approved' ? 'unpaid' : '-');
+    const payButton = s.status === 'approved' && s.payment?.status === 'unpaid'
+      ? `<button class="ok" data-pay-sub="${s.payment.id}">Bayar</button>`
+      : (s.payment?.status === 'paid' ? '<span class="muted">Sudah dibayar</span>' : '');
+    return `<tr><td>${date(s.submitted_at)}</td><td><b>${s.profiles?.nama||'-'}</b><br>${s.profiles?.email||''}</td><td>${s.tasks?.title||'-'}<br><span class="money">${money(s.tasks?.reward_amount)}</span></td><td>${(s.result_note||'-').slice(0,120)}</td><td>${statusBadge(s.status)}</td><td>${payStatus === '-' ? '-' : statusBadge(payStatus)}</td><td class="actions"><button class="ghost" data-view-sub="${s.id}">Detail</button><button class="ok" data-approve="${s.id}">Approve</button><button class="warn" data-revision="${s.id}">Revisi</button><button class="danger" data-reject="${s.id}">Reject</button>${payButton}</td></tr>`;
+  }).join('')}
   </tbody></table>`;
 }
 
@@ -342,6 +351,14 @@ async function markPaid(id) {
   if (error) return toast(error.message);
   toast('Pembayaran ditandai paid.');
   adminPayments();
+}
+
+async function markPaidFromSubmissions(id) {
+  const note = prompt('Catatan pembayaran, boleh dikosongkan:') || '';
+  const { error } = await sb.from('payments').update({ status:'paid', paid_at:new Date().toISOString(), paid_by:me.id, payment_note:note }).eq('id', id);
+  if (error) return toast(error.message);
+  toast('Pembayaran ditandai paid.');
+  adminSubmissions();
 }
 
 async function adminReports() {
