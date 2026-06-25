@@ -547,8 +547,20 @@ async function submitWork(claim_id, task_id, submission_id='') {
 }
 
 async function workerPayments() {
-  const { data } = await sb.from('payments').select('*, submissions(tasks(title)), profiles(nama,email)').eq('worker_id', me.id).order('created_at',{ascending:false});
-  setContent(`<div class="card"><h3>Riwayat Pembayaran</h3>${paymentsTable(data||[], false)}</div>`);
+  const { data, error } = await sb
+    .from('submissions')
+    .select('*')
+    .eq('worker_id', me.id)
+    .eq('status', 'approved')
+    .order('submitted_at', { ascending:false });
+
+  if (error) {
+    setContent(`<div class="card"><h3>Riwayat Pembayaran</h3><p class="notice danger">Gagal mengambil riwayat pembayaran: ${error.message}</p></div>`);
+    return;
+  }
+
+  const rows = await enrichSubmissions(data || []);
+  setContent(`<div class="card"><h3>Riwayat Pembayaran</h3>${paymentsFromSubmissionsTable(rows, false)}</div>`);
 }
 
 function workerProfile() {
