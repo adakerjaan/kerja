@@ -303,9 +303,9 @@ function submissionsTable(rows) {
   return `<table><thead><tr><th>Tanggal</th><th>Worker</th><th>Task</th><th>Keterangan</th><th>Status</th><th>Pembayaran</th><th>Aksi</th></tr></thead><tbody>
   ${rows.map(s=>{
     const payStatus = s.payment?.status || (s.status === 'approved' ? 'unpaid' : '-');
-    const payButton = s.status === 'approved' && s.payment?.status === 'unpaid'
-      ? `<button class="ok" data-pay-sub="${s.payment.id}">Bayar</button>`
-      : (s.payment?.status === 'paid' ? '<span class="muted">Sudah dibayar</span>' : '');
+    const payButton = s.status === 'approved'
+      ? (payStatus === 'paid' ? '<span class="muted">Sudah dibayar</span>' : `<button class="ok" data-pay-sub="${s.id}">Bayar</button>`)
+      : '';
     return `<tr><td>${date(s.submitted_at)}</td><td><b>${s.profiles?.nama||'-'}</b><br>${s.profiles?.email||''}</td><td>${s.tasks?.title||'-'}<br><span class="money">${money(s.tasks?.reward_amount)}</span></td><td>${(s.result_note||'-').slice(0,120)}</td><td>${statusBadge(s.status)}</td><td>${payStatus === '-' ? '-' : statusBadge(payStatus)}</td><td class="actions"><button class="ghost" data-view-sub="${s.id}">Detail</button><button class="ok" data-approve="${s.id}">Approve</button><button class="warn" data-revision="${s.id}">Revisi</button><button class="danger" data-reject="${s.id}">Reject</button>${payButton}</td></tr>`;
   }).join('')}
   </tbody></table>`;
@@ -333,9 +333,25 @@ async function reviewSubmission(id, status) {
 }
 
 async function adminPayments() {
-  const { data } = await sb.from('payments').select('*, submissions(task_id,status,tasks(title)), profiles(nama,email)').order('created_at',{ascending:false});
-  setContent(`<div class="card"><h3>Pembayaran</h3>${paymentsTable(data||[], true)}</div>`);
-  document.querySelectorAll('[data-pay]').forEach(b => b.onclick = () => markPaid(b.dataset.pay));
+  const { data, error } = await sb.from('submissions').select('*').eq('status','approved').order('submitted_at',{ascending:false});
+  if (error) {
+    setContent(`<div class="card"><h3>Pembayaran</h3><p class="notice danger">Gagal mengambil data pembayaran: ${error.message}</p></div>`);
+    return;
+  }
+  const rows = await enrichSubmissions(data||[]);
+  setContent(`<div class="card"><h3>Pembayaran</h3>${paymentsFromSubmissionsTable(rows, true)}</div>`);
+  document.querySelectorAll('[data-pay-sub]').forEach(b => b.onclick = () => markPaidFromSubmissions(b.dataset.paySub, true));
+}
+
+function paymentsFromSubmissionsTable(rows, admin=false) {
+  if (!rows.length) return '<p class="muted">Belum ada data pembayaran.</p>';
+  return `<table><thead><tr><th>Worker</th><th>Task</th><th>Nominal</th><th>Status Pembayaran</th><th>Tanggal Bayar</th>${admin?'<th>Aksi</th>':''}</tr></thead><tbody>
+  ${rows.map(s=>{
+    const payStatus = s.payment?.status || 'unpaid';
+    const paidAt = s.payment?.paid_at || null;
+    return `<tr><td>${s.profiles?.nama||'-'}<br>${s.profiles?.email||''}</td><td>${s.tasks?.title||'-'}</td><td class="money">${money(s.payment?.amount || s.tasks?.reward_amount || 0)}</td><td>${statusBadge(payStatus)}</td><td>${date(paidAt)}</td>${admin?`<td>${payStatus==='unpaid'?`<button class="ok" data-pay-sub="${s.id}">Tandai Dibayar</button>`:'-'}</td>`:''}</tr>`;
+  }).join('')}
+  </tbody></table>`;
 }
 
 function paymentsTable(rows, admin=false) {
@@ -353,12 +369,30 @@ async function markPaid(id) {
   adminPayments();
 }
 
-async function markPaidFromSubmissions(id) {
+async function ensurePaymentForSubmission(submissionId) {
+  const { data: sub, error: e1 } = await sb.from('submissions').select('id,worker_id,status,tasks(reward_amount)').eq('id', submissionId).single();
+  if (e1) throw e1;
+  if (sub.status !== 'approved') throw new Error('Submission belum approved, belum bisa dibayar.');
+  const amount = sub.tasks?.reward_amount || 0;
+  const { data: existing, error: e2 } = await sb.from('payments').select('id,status').eq('submission_id', submissionId).maybeSingle();
+  if (e2) throw e2;
+  if (existing?.id) return existing.id;
+  const { data: inserted, error: e3 } = await sb.from('payments').insert({ submission_id:submissionId, worker_id:sub.worker_id, amount, status:'unpaid' }).select('id').single();
+  if (e3) throw e3;
+  return inserted.id;
+}
+
+async function markPaidFromSubmissions(submissionId, refreshPayments=false) {
   const note = prompt('Catatan pembayaran, boleh dikosongkan:') || '';
-  const { error } = await sb.from('payments').update({ status:'paid', paid_at:new Date().toISOString(), paid_by:me.id, payment_note:note }).eq('id', id);
-  if (error) return toast(error.message);
-  toast('Pembayaran ditandai paid.');
-  adminSubmissions();
+  try {
+    const paymentId = await ensurePaymentForSubmission(submissionId);
+    const { error } = await sb.from('payments').update({ status:'paid', paid_at:new Date().toISOString(), paid_by:me.id, payment_note:note }).eq('id', paymentId);
+    if (error) throw error;
+    toast('Pembayaran ditandai paid.');
+    refreshPayments ? adminPayments() : adminSubmissions();
+  } catch (err) {
+    toast(err.message || 'Gagal menandai pembayaran.');
+  }
 }
 
 async function adminReports() {
