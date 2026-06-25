@@ -307,7 +307,7 @@ async function viewSubmission(id) {
   if (error) return toast(error.message);
   const rows = await enrichSubmissions([data]);
   const item = rows[0];
-  modal('Detail Submission', `<p><b>Worker:</b> ${item.profiles?.nama||'-'}<br><b>Task:</b> ${item.tasks?.title||'-'}<br><b>Status:</b> ${item.status}</p><p><b>Keterangan:</b><br>${item.result_note||'-'}</p><p><b>Link Bukti:</b> ${item.proof_link ? `<a href="${item.proof_link}" target="_blank">Buka link</a>` : '-'}</p>${item.screenshot_url ? `<img class="proof-img" src="${item.screenshot_url}">` : '<p>Tidak ada screenshot.</p>'}`);
+  modal('Detail Submission', `<p><b>Worker:</b> ${item.profiles?.nama||'-'}<br><b>Task:</b> ${item.tasks?.title||'-'}<br><b>Status:</b> ${item.status}</p><p><b>Keterangan:</b><br>${item.result_note||'-'}</p><p><b>Catatan Admin:</b><br>${item.admin_note||'-'}</p><p><b>Link Bukti:</b> ${item.proof_link ? `<a href="${item.proof_link}" target="_blank">Buka link</a>` : '-'}</p>${item.screenshot_url ? `<img class="proof-img" src="${item.screenshot_url}">` : '<p>Tidak ada screenshot.</p>'}`);
 }
 
 async function reviewSubmission(id, status) {
@@ -415,28 +415,50 @@ async function claimTask(task_id) {
 }
 
 async function workerMyTasks() {
-  const { data } = await sb.from('task_claims').select('*, tasks(*)').eq('worker_id', me.id).eq('work_date', todayKey()).order('claimed_at',{ascending:false});
-  setContent(`<div class="card"><h3>Task Saya Hari Ini</h3>${myTasksTable(data||[])}</div>`);
-  document.querySelectorAll('[data-submit-task]').forEach(b => b.onclick = () => submitForm(b.dataset.submitTask, b.dataset.taskId));
+  const { data: claims, error } = await sb.from('task_claims').select('*, tasks(*)').eq('worker_id', me.id).eq('work_date', todayKey()).order('claimed_at',{ascending:false});
+  if (error) return setContent(`<div class="card"><h3>Task Saya Hari Ini</h3><p class="notice danger">Gagal mengambil task saya: ${error.message}</p></div>`);
+
+  const claimIds = (claims || []).map(c => c.id);
+  let subMap = {};
+  if (claimIds.length) {
+    const { data: subs } = await sb.from('submissions').select('*').in('claim_id', claimIds).order('submitted_at',{ascending:false});
+    (subs || []).forEach(s => { if (!subMap[s.claim_id]) subMap[s.claim_id] = s; });
+  }
+
+  const rows = (claims || []).map(c => ({ ...c, submission: subMap[c.id] || null }));
+  setContent(`<div class="card"><h3>Task Saya Hari Ini</h3>${myTasksTable(rows)}</div>`);
+  document.querySelectorAll('[data-submit-task]').forEach(b => b.onclick = () => submitForm(b.dataset.submitTask, b.dataset.taskId, b.dataset.submissionId || ''));
 }
 
 function myTasksTable(rows) {
   if (!rows.length) return '<p class="muted">Belum ada task yang diambil.</p>';
-  return `<table><thead><tr><th>Task</th><th>Bayaran</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
-  ${rows.map(c=>`<tr><td><b>${c.tasks?.title||'-'}</b><br>${(c.tasks?.instruction||'').slice(0,100)}</td><td>${money(c.tasks?.reward_amount)}</td><td>${statusBadge(c.status)}</td><td>${c.status==='submitted' ? '<span class="muted">Sudah submit</span>' : `<button data-submit-task="${c.id}" data-task-id="${c.task_id}">Submit Hasil</button>`}</td></tr>`).join('')}
+  return `<table><thead><tr><th>Task</th><th>Bayaran</th><th>Status</th><th>Catatan Revisi/Admin</th><th>Aksi</th></tr></thead><tbody>
+  ${rows.map(c=>{
+    const sub = c.submission;
+    const status = sub?.status || c.status;
+    const note = sub?.admin_note || '-';
+    let action = '';
+    if (status === 'revision') action = `<button class="warn" data-submit-task="${c.id}" data-task-id="${c.task_id}" data-submission-id="${sub?.id||''}">Submit Ulang</button>`;
+    else if (status === 'in_progress') action = `<button data-submit-task="${c.id}" data-task-id="${c.task_id}">Submit Hasil</button>`;
+    else if (status === 'submitted') action = '<span class="muted">Sudah submit</span>';
+    else if (status === 'approved') action = '<span class="muted">Selesai</span>';
+    else if (status === 'rejected') action = '<span class="muted">Ditolak</span>';
+    else action = '-';
+    return `<tr><td><b>${c.tasks?.title||'-'}</b><br>${(c.tasks?.instruction||'').slice(0,100)}</td><td>${money(c.tasks?.reward_amount)}</td><td>${statusBadge(status)}</td><td>${note !== '-' ? `<div class="notice warn">${note}</div>` : '-'}</td><td>${action}</td></tr>`;
+  }).join('')}
   </tbody></table>`;
 }
 
-function submitForm(claim_id, task_id) {
-  modal('Submit Hasil Pekerjaan', `<div class="form-grid">
+function submitForm(claim_id, task_id, submission_id='') {
+  modal(submission_id ? 'Submit Ulang Revisi' : 'Submit Hasil Pekerjaan', `<div class="form-grid">
     <div class="full"><label>Upload Screenshot</label><input id="subFile" type="file" accept="image/*"></div>
     <div class="full"><label>Keterangan Hasil Pekerjaan</label><textarea id="subNote"></textarea></div>
     <div class="full"><label>Link Bukti Tambahan</label><input id="subProof" placeholder="opsional"></div>
-  </div><div class="actions"><button id="btnSubmitWork">Kirim Submit</button></div>`);
-  $('btnSubmitWork').onclick = () => submitWork(claim_id, task_id);
+  </div><div class="actions"><button id="btnSubmitWork">${submission_id ? 'Kirim Revisi' : 'Kirim Submit'}</button></div>`);
+  $('btnSubmitWork').onclick = () => submitWork(claim_id, task_id, submission_id);
 }
 
-async function submitWork(claim_id, task_id) {
+async function submitWork(claim_id, task_id, submission_id='') {
   const file = $('subFile').files[0];
   const result_note = $('subNote').value.trim();
   const proof_link = $('subProof').value.trim();
@@ -450,11 +472,26 @@ async function submitWork(claim_id, task_id) {
   const up = await sb.storage.from('submission-screenshots').upload(path, file, { upsert:false });
   if (up.error) return toast(up.error.message);
   const { data: pub } = sb.storage.from('submission-screenshots').getPublicUrl(path);
-  const { error } = await sb.from('submissions').insert({ task_id, claim_id, worker_id:me.id, screenshot_url:pub.publicUrl, result_note, proof_link, status:'submitted', work_date: todayKey() });
+  let error;
+  if (submission_id) {
+    const res = await sb.from('submissions').update({
+      screenshot_url: pub.publicUrl,
+      result_note,
+      proof_link,
+      status: 'submitted',
+      admin_note: null,
+      submitted_at: new Date().toISOString(),
+      work_date: todayKey()
+    }).eq('id', submission_id).eq('worker_id', me.id);
+    error = res.error;
+  } else {
+    const res = await sb.from('submissions').insert({ task_id, claim_id, worker_id:me.id, screenshot_url:pub.publicUrl, result_note, proof_link, status:'submitted', work_date: todayKey() });
+    error = res.error;
+  }
   if (error) return toast(error.message);
   await sb.from('task_claims').update({ status:'submitted' }).eq('id', claim_id);
   closeModal();
-  toast('Hasil kerja berhasil dikirim.');
+  toast(submission_id ? 'Revisi berhasil dikirim.' : 'Hasil kerja berhasil dikirim.');
   workerMyTasks();
 }
 
