@@ -78,3 +78,8 @@ Worker:
 - Ambil task
 - Submit screenshot dan keterangan
 - Lihat status pembayaran
+
+
+Update field worker:
+- Data worker sekarang memiliki field tambahan `E-money` untuk menyimpan nomor/metode pembayaran seperti DANA, OVO, GoPay, ShopeePay, atau rekening e-wallet lain.
+- Jika database sudah dibuat sebelumnya, jalankan SQL: `alter table public.profiles add column if not exists e_money text;`

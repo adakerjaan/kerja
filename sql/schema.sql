@@ -10,6 +10,7 @@ create table if not exists public.profiles (
   nama text not null,
   email text,
   no_hp text,
+  e_money text,
   role text not null default 'worker' check (role in ('admin','worker')),
   status text not null default 'active' check (status in ('active','inactive')),
   created_at timestamptz default now(),
@@ -184,5 +185,8 @@ for insert with check (
 -- 1. Buat user admin manual di Supabase Authentication.
 -- 2. Ambil ID user tersebut.
 -- 3. Jalankan contoh ini dengan mengganti auth_user_id dan email:
+-- Jika database sudah terlanjur dibuat, jalankan ini sekali untuk menambah kolom E-money:
+-- alter table public.profiles add column if not exists e_money text;
+
 -- insert into public.profiles (auth_user_id, nama, email, role, status)
 -- values ('ISI_AUTH_USER_ID_ADMIN', 'Admin', 'admin@email.com', 'admin', 'active');

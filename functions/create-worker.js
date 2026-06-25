@@ -43,6 +43,7 @@ export async function onRequestPost({ request, env }) {
     const nama = String(body.nama || '').trim();
     const email = String(body.email || '').trim().toLowerCase();
     const no_hp = String(body.no_hp || '').trim();
+    const e_money = String(body.e_money || '').trim();
     const password = String(body.password || '').trim();
 
     if (!nama || !email || !password) {
@@ -73,7 +74,7 @@ export async function onRequestPost({ request, env }) {
         'Content-Type': 'application/json',
         Prefer: 'return=representation',
       },
-      body: JSON.stringify({ auth_user_id: created.id, nama, email, no_hp, role: 'worker', status: 'active' }),
+      body: JSON.stringify({ auth_user_id: created.id, nama, email, no_hp, e_money, role: 'worker', status: 'active' }),
     });
 
     const profile = await profileRes.json();

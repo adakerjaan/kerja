@@ -5,6 +5,7 @@
 const SUPABASE_URL = 'https://lxtwlnqvblavllesgitt.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx4dHdsbnF2YmxhdmxsZXNnaXR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNTg2NzAsImV4cCI6MjA5NzkzNDY3MH0.QY5jCi7QChIvhPBxzg_7h0Ek8yW8c5tLY0D9pHD_IOc';
 
+
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let session = null;
 let me = null;
@@ -201,6 +202,7 @@ async function adminWorkers() {
       <div><label>Nama Worker</label><input id="workerNama"></div>
       <div><label>Email Login</label><input id="workerEmail" type="email"></div>
       <div><label>No HP</label><input id="workerHp"></div>
+      <div><label>E-money</label><input id="workerEmoney" placeholder="contoh: DANA/OVO/GoPay 08xxxx"></div>
       <div><label>Password Awal</label><input id="workerPass" type="text" placeholder="minimal 6 karakter"></div>
     </div>
     <div class="actions"><button id="btnCreateWorker">Buat Akun Worker</button></div>
@@ -213,14 +215,14 @@ async function adminWorkers() {
 
 function workersTable(rows) {
   if (!rows.length) return '<p class="muted">Belum ada worker.</p>';
-  return `<table><thead><tr><th>Nama</th><th>Email/HP</th><th>Status</th><th>Dibuat</th><th>Aksi</th></tr></thead><tbody>
-    ${rows.map(w=>`<tr><td><b>${w.nama}</b></td><td>${w.email||'-'}<br>${w.no_hp||'-'}</td><td>${statusBadge(w.status)}</td><td>${date(w.created_at)}</td><td class="actions"><button class="ghost" data-worker-toggle="${w.id}" data-status="active">Aktif</button><button class="danger" data-worker-toggle="${w.id}" data-status="inactive">Nonaktif</button><button class="secondary" data-worker-reset="${w.auth_user_id}">Reset Password</button></td></tr>`).join('')}
+  return `<table><thead><tr><th>Nama</th><th>Email/HP</th><th>E-money</th><th>Status</th><th>Dibuat</th><th>Aksi</th></tr></thead><tbody>
+    ${rows.map(w=>`<tr><td><b>${w.nama}</b></td><td>${w.email||'-'}<br>${w.no_hp||'-'}</td><td>${w.e_money||'-'}</td><td>${statusBadge(w.status)}</td><td>${date(w.created_at)}</td><td class="actions"><button class="ghost" data-worker-toggle="${w.id}" data-status="active">Aktif</button><button class="danger" data-worker-toggle="${w.id}" data-status="inactive">Nonaktif</button><button class="secondary" data-worker-reset="${w.auth_user_id}">Reset Password</button></td></tr>`).join('')}
   </tbody></table>`;
 }
 
 async function createWorker() {
   const body = {
-    nama: $('workerNama').value.trim(), email: $('workerEmail').value.trim(), no_hp: $('workerHp').value.trim(), password: $('workerPass').value.trim()
+    nama: $('workerNama').value.trim(), email: $('workerEmail').value.trim(), no_hp: $('workerHp').value.trim(), e_money: $('workerEmoney').value.trim(), password: $('workerPass').value.trim()
   };
   if (!body.nama || !body.email || !body.password) return toast('Nama, email dan password wajib diisi.');
   const res = await fetch('/create-worker', {
@@ -410,7 +412,7 @@ async function workerPayments() {
 }
 
 function workerProfile() {
-  setContent(`<div class="card"><h3>Profil</h3><p><b>Nama:</b> ${me.nama}</p><p><b>Email:</b> ${me.email||'-'}</p><p><b>No HP:</b> ${me.no_hp||'-'}</p><p><b>Status:</b> ${me.status}</p></div>`);
+  setContent(`<div class="card"><h3>Profil</h3><p><b>Nama:</b> ${me.nama}</p><p><b>Email:</b> ${me.email||'-'}</p><p><b>No HP:</b> ${me.no_hp||'-'}</p><p><b>E-money:</b> ${me.e_money||'-'}</p><p><b>Status:</b> ${me.status}</p></div>`);
 }
 
 function modal(title, body) {
